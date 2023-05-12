@@ -1,10 +1,17 @@
 const express = require('express')
+const { createServer } = require('http')
+const { Server } = require('socket.io')
 const logger = require('morgan')
 const cors = require('cors')
-
-const contactsRouter = require('./routes/api/contacts')
+require('dotenv').config()
 
 const app = express()
+const httpServer = createServer(app)
+const io = new Server(httpServer, {
+	cors: '*',
+})
+
+const userRouter = require('./routes/api/auth')
 
 const formatsLogger = app.get('env') === 'development' ? 'dev' : 'short'
 
@@ -12,14 +19,29 @@ app.use(logger(formatsLogger))
 app.use(cors())
 app.use(express.json())
 
-app.use('/api/contacts', contactsRouter)
+require('./config/config-passport')
 
-app.use((req, res) => {
-  res.status(404).json({ message: 'Not found' })
+app.use('/api/auth', userRouter)
+
+const connections = []
+
+io.on('connection', socket => {
+	console.log('User connected')
+
+	connections.push(socket)
+
+	socket.on('disconnect', () => {
+		connections.splice(connections.indexOf(socket), 1)
+		console.log('User disconnect')
+	})
+
+	socket.on('send mess', data => {
+		io.sockets.emit('add mess', { mess: data.mess, name: data.name })
+	})
+
+	socket.on('typing', name => {
+		socket.broadcast.emit('typing', name)
+	})
 })
 
-app.use((err, req, res, next) => {
-  res.status(500).json({ message: err.message })
-})
-
-module.exports = app
+module.exports = httpServer
